@@ -45,7 +45,7 @@ func (s *EventQueueSuite) TestCloseEventQueueMultipleTimes(c *C) {
 }
 
 func (s *EventQueueSuite) TestNewEvent(c *C) {
-	e := NewEvent(struct{}{})
+	e := NewEvent(&DummyEvent{})
 	c.Assert(e.Metadata, Not(IsNil))
 	c.Assert(e.eventResults, Not(IsNil))
 	c.Assert(e.cancelled, Not(IsNil))
@@ -53,8 +53,8 @@ func (s *EventQueueSuite) TestNewEvent(c *C) {
 
 type DummyEvent struct{}
 
-func (d *DummyEvent) Handle() interface{} {
-	return struct{}{}
+func (d *DummyEvent) Handle(ifc chan interface{}) {
+	ifc <- struct{}{}
 }
 
 func (s *EventQueueSuite) TestEventCancelAfterQueueClosed(c *C) {
