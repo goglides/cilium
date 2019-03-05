@@ -78,6 +78,9 @@ func defaultCommands(confDir string, cmdDir string, k8sPods []string) []string {
 		// xfrm
 		"ip xfrm policy",
 		"ip -s xfrm state",
+		"cat /proc/meminfo",
+		"cat /proc/vmstat",
+		"cat /proc/vmallocinfo",
 		// gops
 		fmt.Sprintf("gops memstats $(pidof %s)", components.CiliumAgentName),
 		fmt.Sprintf("gops stack $(pidof %s)", components.CiliumAgentName),
