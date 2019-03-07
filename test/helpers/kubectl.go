@@ -1524,6 +1524,12 @@ func (kub *Kubectl) ValidateNoErrorsInLogs(duration time.Duration) {
 		}
 	}()
 
+	res = kub.Exec("cat /proc/vmstat | grep oom_kill | cut -d' ' -f2")
+	out := res.Output().String()
+	if !strings.HasPrefix(out, "0") {
+		ginkgoext.Fail(fmt.Sprintf("Invalid OOM kill count: %s", out))
+	}
+
 	failIfContainsBadLogMsg(logs)
 
 	// Count part
