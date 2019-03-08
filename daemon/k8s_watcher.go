@@ -95,7 +95,6 @@ var (
 	networkPolicyV1VerConstr = versioncheck.MustCompile(">= 1.7.0")
 
 	ciliumv2VerConstr           = versioncheck.MustCompile(">= 1.8.0")
-	ciliumPatchStatusVerConstr  = versioncheck.MustCompile(">= 1.13.0")
 	ciliumUpdateStatusVerConstr = versioncheck.MustCompile(">= 1.11.0")
 
 	k8sCM = controller.NewManager()
@@ -639,7 +638,7 @@ func (d *Daemon) EnableK8sWatcher(queueSize uint) error {
 		ciliumV2Controller := si.Cilium().V2().CiliumNetworkPolicies().Informer()
 		var cnpStore cache.Store
 		switch {
-		case ciliumPatchStatusVerConstr.Check(k8sServerVer):
+		case k8s.JSONPatchVerConstr.Check(k8sServerVer):
 			// k8s >= 1.13 does not require a store
 		default:
 			cnpStore = ciliumV2Controller.GetStore()
@@ -1462,12 +1461,6 @@ func cnpNodeStatusController(
 	return overallErr
 }
 
-type jsonPatch struct {
-	OP    string      `json:"op,omitempty"`
-	Path  string      `json:"path,omitempty"`
-	Value interface{} `json:"value"`
-}
-
 func updateCNPNodeStatus(ciliumNPClient clientset.Interface, cnp *cilium_v2.CiliumNetworkPolicy, enforcing, ok bool, cnpError error, rev uint64, annotations map[string]string, nodeName string) error {
 	var (
 		cnpns cilium_v2.CiliumNetworkPolicyNodeStatus
@@ -1495,7 +1488,7 @@ func updateCNPNodeStatus(ciliumNPClient clientset.Interface, cnp *cilium_v2.Cili
 	ns := k8sUtils.ExtractNamespace(&cnp.ObjectMeta)
 
 	switch {
-	case ciliumPatchStatusVerConstr.Check(k8sServerVer):
+	case k8s.JSONPatchVerConstr.Check(k8sServerVer):
 		// This is a JSON Patch [RFC 6902] used to create the `/status/nodes`
 		// field in the CNP. If we don't create, replacing the status for this
 		// node will fail as the path does not exist.
@@ -1507,7 +1500,7 @@ func updateCNPNodeStatus(ciliumNPClient clientset.Interface, cnp *cilium_v2.Cili
 		// one of the nodes would "create" the `/status` path before all other
 		// nodes tried to replace their own status resulted in a gain of 3 %.
 		// This gain is less notable once the number of nodes increases.
-		createStatusAndNodePatch := []jsonPatch{
+		createStatusAndNodePatch := []k8s.JSONPatch{
 			{
 				OP:    "test",
 				Path:  "/status",
@@ -1534,7 +1527,7 @@ func updateCNPNodeStatus(ciliumNPClient clientset.Interface, cnp *cilium_v2.Cili
 		if err != nil {
 			// If it fails it means the test from the previous patch failed
 			// so we can safely replace this node in the CNP status.
-			createStatusAndNodePatch := []jsonPatch{
+			createStatusAndNodePatch := []k8s.JSONPatch{
 				{
 					OP:    "replace",
 					Path:  "/status/nodes/" + nodeName,
