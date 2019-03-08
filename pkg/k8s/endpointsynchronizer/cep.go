@@ -16,6 +16,7 @@ package endpointsynchronizer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/cilium/cilium/pkg/k8s"
@@ -36,6 +37,7 @@ import (
 	"github.com/sirupsen/logrus"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 )
 
@@ -186,7 +188,14 @@ func (epSync *EndpointSynchronizer) RunK8sCiliumEndpointSync(e *endpoint.Endpoin
 					return nil
 				}
 
-				cep, err := ciliumClient.CiliumEndpoints(namespace).Get(podName, meta_v1.GetOptions{})
+				var cep *cilium_v2.CiliumEndpoint
+				switch {
+				case k8s.JSONPatchVerConstr.Check(k8sServerVer):
+					// For json patch we don't need to perform a GET for endpoints
+				default:
+					cep, err = ciliumClient.CiliumEndpoints(namespace).Get(podName, meta_v1.GetOptions{})
+				}
+
 				switch {
 				// The CEP doesn't exist. We will fall through to the create code below
 				case err != nil && k8serrors.IsNotFound(err):
@@ -197,7 +206,7 @@ func (epSync *EndpointSynchronizer) RunK8sCiliumEndpointSync(e *endpoint.Endpoin
 					firstRun = false
 					scopedLog.Debug("Deleting CEP on first run")
 					err := ciliumClient.CiliumEndpoints(namespace).Delete(podName, &meta_v1.DeleteOptions{})
-					if err != nil {
+					if err != nil && !k8serrors.IsNotFound(err) {
 						scopedLog.WithError(err).Warn("Error deleting CEP")
 						return err
 					}
@@ -218,18 +227,36 @@ func (epSync *EndpointSynchronizer) RunK8sCiliumEndpointSync(e *endpoint.Endpoin
 
 				// do an update
 				case err == nil:
-					// Update the copy of the cep
-					mdl.DeepCopyInto(&cep.Status)
-					var err2 error
 					switch {
+					case k8s.JSONPatchVerConstr.Check(k8sServerVer):
+						// If it fails it means the test from the previous patch failed
+						// so we can safely replace this node in the CNP status.
+						replaceCEPStatus := []k8s.JSONPatch{
+							{
+								OP:    "replace",
+								Path:  "/status",
+								Value: mdl,
+							},
+						}
+						var createStatusPatch []byte
+						createStatusPatch, err = json.Marshal(replaceCEPStatus)
+						if err != nil {
+							return err
+						}
+						_, err = ciliumClient.CiliumEndpoints(namespace).Patch(podName, types.JSONPatchType, createStatusPatch, "status")
 					case ciliumUpdateStatusVerConstr.Check(k8sServerVer):
-						_, err2 = ciliumClient.CiliumEndpoints(namespace).UpdateStatus(cep)
+						// Update the copy of the cep
+						mdl.DeepCopyInto(&cep.Status)
+						_, err = ciliumClient.CiliumEndpoints(namespace).UpdateStatus(cep)
 					default:
-						_, err2 = ciliumClient.CiliumEndpoints(namespace).Update(cep)
+						// Update the copy of the cep
+						mdl.DeepCopyInto(&cep.Status)
+						_, err = ciliumClient.CiliumEndpoints(namespace).Update(cep)
 					}
-					if err2 != nil {
-						scopedLog.WithError(err2).Error("Cannot update CEP")
-						return err2
+
+					if err != nil {
+						scopedLog.WithError(err).Error("Cannot update CEP")
+						return err
 					}
 
 					lastMdl = mdl
