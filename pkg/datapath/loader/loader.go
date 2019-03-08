@@ -61,7 +61,16 @@ func reloadDatapath(ctx context.Context, ep endpoint, dirs *directoryInfo) error
 		if err := replaceDatapath(ctx, ep.InterfaceName(), objPath, symbolFromEndpoint); err != nil {
 			cmd := exec.Command("bpftool", "map", "show")
 			out, _ := cmd.CombinedOutput()
-			fmt.Println("~~~~~~~~~~~~~~~~~~", string(out))
+			fmt.Println("~~~~~~~~~~~~~~~~~~\n", string(out), "\n~~~~~~~~~~~")
+			cmd = exec.Command("cat", "/proc/vmallocinfo")
+			out, _ = cmd.CombinedOutput()
+			fmt.Println("~~~~~~~~~~~~~~~~~~\n", string(out), "\n~~~~~~~~~~~")
+			cmd = exec.Command("cat", "/proc/vmstat")
+			out, _ = cmd.CombinedOutput()
+			fmt.Println("~~~~~~~~~~~~~~~~~~\n", string(out), "\n~~~~~~~~~~~")
+			cmd = exec.Command("cat", "/proc/meminfo")
+			out, _ = cmd.CombinedOutput()
+			fmt.Println("~~~~~~~~~~~~~~~~~~\n", string(out), "\n~~~~~~~~~~~")
 
 			scopedLog := ep.Logger(Subsystem).WithFields(logrus.Fields{
 				logfields.Path: objPath,
